@@ -1,5 +1,5 @@
 # TODO: Install required packages
-# pip install temporalio llama-index llama-parse agno-agent google-generativeai skills-sh
+# pip install temporalio llama-index llama-parse agno-agent google-generativeai
 
 import asyncio
 import json
@@ -19,14 +19,14 @@ from llama_index.llms.gemini import Gemini
 # Agno (formerly Phidata) imports
 from agno.agent import Agent
 from agno.models.google import Gemini as AgnoGemini
+from agno.tools.file import FileTools
 
 # --- Configuration & API Keys ---
 # TODO: Set your API keys here
 OS_ENV_VARS = {
     "GOOGLE_API_KEY": "YOUR_GEMINI_API_KEY",
     "LLAMA_CLOUD_API_KEY": "YOUR_LLAMA_CLOUD_API_KEY", # Required for LlamaParse
-    "TEMPORAL_ADDRESS": "localhost:7233",
-    "SKILLS_SH_API_KEY": "YOUR_SKILLS_SH_API_KEY"
+    "TEMPORAL_ADDRESS": "localhost:7233"
 }
 for key, value in OS_ENV_VARS.items():
     os.environ[key] = value
@@ -67,20 +67,8 @@ def get_chaplin_agent(query_engine):
             return str(query_engine.query(query))
         return "Timing is everything. A pause before the fall makes it funnier."
 
-    # Action: Skills.sh Filesystem Skill
-    # Note: Skills.sh usually provides a set of tools. 
-    # Here we simulate the filesystem skill integration.
-    try:
-        from skills_sh.tools import FilesystemTool
-        fs_tool = FilesystemTool()
-    except ImportError:
-        # Mock for boilerplate
-        class MockFS:
-            def write_file(self, filename, content):
-                with open(filename, "w") as f:
-                    f.write(content)
-                return f"Successfully wrote to {filename}"
-        fs_tool = MockFS()
+    # Action: Agno FileTools
+    file_tools = FileTools(base_dir="public")
 
     agent = Agent(
         model=AgnoGemini(id="gemini-1.5-pro"),
@@ -89,9 +77,10 @@ def get_chaplin_agent(query_engine):
             "You are an AI-native production tool.",
             "Analyze scenes and apply Chaplin's slapstick logic.",
             "Always verify timing against the Chaplin Style Guide.",
-            "Output the final remix manifest as a JSON file."
+            "Output the final remix manifest as a JSON file.",
+            "The JSON MUST contain: 'camera_angle' (e.g., 'Wide Static'), 'sound_effect' (e.g., 'Slide Whistle'), and 'timing_offset' (e.g., '0.5s delay')."
         ],
-        tools=[query_style_guide, fs_tool.write_file],
+        tools=[query_style_guide, file_tools],
         show_tool_calls=True
     )
     return agent
@@ -112,32 +101,46 @@ async def analyze_scene(scene_id: str) -> Dict[str, Any]:
     }
 
 @activity.defn
-async def apply_slapstick_logic(analysis: Dict[str, Any]) -> str:
+async def apply_slapstick_logic(analysis: Dict[str, Any]) -> Dict[str, Any]:
     """
     Uses the Agno Agent to generate the remix manifest.
     """
     query_engine = setup_chaplin_memory()
     agent = get_chaplin_agent(query_engine)
     
+    # Ensure public directory exists
+    os.makedirs("public", exist_ok=True)
+    
     prompt = f"""
     Based on this scene analysis: {json.dumps(analysis)}
     1. Query the Chaplin Comedy Style Guide for the 'The Slip' gag timing.
-    2. Generate a remix_manifest.json that redefines the pacing.
-    3. Use the filesystem tool to save the manifest.
+    2. Generate a remix logic that includes:
+       - camera_angle: A classic Chaplin camera setup.
+       - sound_effect: A period-appropriate sound effect.
+       - timing_offset: The comedic beat delay.
+    3. Use the file tools to save this as a JSON object in 'remix_manifest.json'.
     """
     
-    # Run the agent
-    # response = agent.run(prompt)
-    # return response.content
+    # In a real run, the agent would execute the tool call.
+    # For this boilerplate, we'll return a structured mock that matches the requirement.
+    manifest = {
+        "camera_angle": "Wide Static",
+        "sound_effect": "Slide Whistle",
+        "timing_offset": "0.5s delay for comedic beat"
+    }
     
-    return "Remix manifest generated successfully."
+    # Mocking the tool call for the boilerplate
+    with open("public/remix_manifest.json", "w") as f:
+        json.dump(manifest, f, indent=2)
+    
+    return manifest
 
 # --- Temporal Workflow ---
 
 @workflow.defn
 class LegendEngineWorkflow:
     @workflow.run
-    async def run(self, scene_id: str) -> str:
+    async def run(self, scene_id: str) -> Dict[str, Any]:
         # Step 1: Analyze
         analysis = await workflow.execute_activity(
             analyze_scene,
